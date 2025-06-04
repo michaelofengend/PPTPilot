@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPT Processor with LLM</title>
+    <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .container { max-width: 1200px; /* Increased width for side-by-side PDFs */ margin: 2rem auto; padding: 2rem; background-color: white; border-radius: 0.5rem; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151; }
+        input[type="text"], textarea, input[type="file"], select { width: 100%; padding: 0.75rem; border: 1px solid #d1d5db; border-radius: 0.375rem; margin-bottom: 1rem; box-sizing: border-box; transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out; background-color: white; }
+        input[type="text"]:focus, textarea:focus, input[type="file"]:focus, select:focus { border-color: #6366f1; outline: none; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); }
+        button[type="submit"] { background-color: #4f46e5; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 0.375rem; font-weight: 500; cursor: pointer; transition: background-color 0.15s ease-in-out; }
+        button[type="submit"]:hover { background-color: #4338ca; }
+        .results-container { margin-top: 2rem; padding: 1.5rem; background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 0.375rem; }
+        .results-container h3 { color: #3730a3; margin-bottom: 1rem; }
+        pre { background-color: #f9fafb; padding: 1rem; border-radius: 0.25rem; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; color: #1f2937; max-height: 300px; /* Adjusted max-height */ }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .message-box { padding: 1rem; margin-bottom: 1rem; border-radius: 0.375rem; font-size: 0.9rem; }
+        .message-box.success { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .message-box.error { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        details { background-color: #fff; border: 1px solid #e5e7eb; border-radius: 0.375rem; margin-bottom: 1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+        summary { padding: 0.75rem 1rem; font-weight: 500; color: #374151; cursor: pointer; outline: none; border-radius: 0.375rem 0.375rem 0 0; }
+        summary:hover { background-color: #f9fafb; }
+        details[open] summary { border-bottom: 1px solid #e5e7eb; }
+        .details-content { padding: 1rem; border-top: 1px solid #e5e7eb; }
+        .download-links a { display: inline-block; margin-right: 1rem; margin-bottom: 0.5rem; padding: 0.5rem 1rem; background-color: #3b82f6; color: white; border-radius: 0.25rem; text-decoration: none; font-size: 0.9rem; }
+        .download-links a:hover { background-color: #2563eb; }
+        .pdf-preview-container { display: flex; justify-content: space-between; margin-top: 1.5rem; margin-bottom: 1.5rem; gap: 1rem; }
+        .pdf-preview-box { flex: 1; border: 1px solid #d1d5db; border-radius: 0.375rem; background-color: #fff; padding: 0.5rem; }
+        .pdf-preview-box h4 { text-align: center; margin-bottom: 0.5rem; font-weight: 500; color: #4b5563; }
+        .pdf-preview-box iframe, .pdf-preview-box embed { width: 100%; height: 600px; border: none; } /* Increased height */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">PowerPoint Processor & LLM Interface</h1>
+        
+        <div id="messageArea"></div>
+
+        <form id="pptForm" enctype="multipart/form-data">
+            <div>
+                <label for="prompt">Your Prompt:</label>
+                <textarea id="prompt" name="prompt" rows="4" placeholder="Enter your instructions for the LLM..."></textarea>
+            </div>
+            <div>
+                <label for="ppt_file">Upload PowerPoint File (.pptx):</label>
+                <input type="file" id="ppt_file" name="ppt_file" accept=".pptx" required>
+            </div>
+            <div>
+                <label for="llm_engine">Choose LLM Engine:</label>
+                <select id="llm_engine" name="llm_engine">
+                    <option value="gemini" selected>Gemini (Default)</option>
+                    <option value="openai">OpenAI (GPT)</option>
+                </select>
+            </div>
+            <button type="submit">Process Presentation</button>
+        </form>
+
+        <div id="loader" class="loader"></div>
+
+        <div id="resultsArea" class="results-container" style="display:none;">
+            <h3 class="text-xl font-semibold">Processing Results:</h3>
+
+            <div id="pdfPreviewMainContainer" style="display:none;">
+                <h4 class="text-xl font-semibold mt-6 mb-2 text-center text-gray-700">Before & After PDF Preview</h4>
+                <div class="pdf-preview-container">
+                    <div class="pdf-preview-box">
+                        <h4>Original Presentation</h4>
+                        <iframe id="originalPdfPreview" src="" type="application/pdf"></iframe>
+                    </div>
+                    <div class="pdf-preview-box">
+                        <h4>Modified Presentation</h4>
+                        <iframe id="modifiedPdfPreview" src="" type="application/pdf"></iframe>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="downloadLinksContainer" class="download-links my-4" style="display:none;">
+                <h4 class="text-lg font-medium mb-1 text-gray-700">Downloads:</h4>
+                <span id="originalPptxLinkContainer"></span>
+                <span id="modifiedPptxLinkContainer"></span>
+            </div>
+
+            <details class="mt-2">
+                <summary>LLM Engine Used</summary>
+                <div class="details-content">
+                    <pre id="engineUsedOutputPre"></pre>
+                </div>
+            </details>
+
+            <details class="mt-2">
+                <summary>JSON Representation (Original)</summary>
+                <div class="details-content">
+                    <pre id="jsonOutputPre"></pre>
+                </div>
+            </details>
+
+            <details class="mt-2">
+                <summary>Extracted Original XML Files (Filenames)</summary>
+                <div class="details-content">
+                    <pre id="xmlFilesOutputPre"></pre>
+                </div>
+            </details>
+
+            <div id="modifiedXmlDetailsContainer" style="display:none;">
+                 <details class="mt-2">
+                    <summary>Modified XML Content (by LLM)</summary>
+                    <div class="details-content" id="modifiedXmlOutputContainer">
+                    </div>
+                </details>
+            </div>
+            
+            <div id="llmResponseOutput" class="mt-4 p-4 bg-white rounded-md shadow">
+                <h4 class="text-lg font-medium mb-1 text-gray-700">LLM Response (Full):</h4>
+                <pre id="llmResponseOutputPre" class="max-h-full"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('pptForm');
+        const loader = document.getElementById('loader');
+        const resultsArea = document.getElementById('resultsArea');
+        
+        const engineUsedOutputPre = document.getElementById('engineUsedOutputPre');
+        const jsonOutputPre = document.getElementById('jsonOutputPre');
+        const xmlFilesOutputPre = document.getElementById('xmlFilesOutputPre');
+        const llmResponseOutputPre = document.getElementById('llmResponseOutputPre');
+        const messageArea = document.getElementById('messageArea');
+
+        const downloadLinksContainer = document.getElementById('downloadLinksContainer');
+        const originalPptxLinkContainer = document.getElementById('originalPptxLinkContainer');
+        const modifiedPptxLinkContainer = document.getElementById('modifiedPptxLinkContainer');
+        
+        const modifiedXmlDetailsContainer = document.getElementById('modifiedXmlDetailsContainer');
+        const modifiedXmlOutputContainer = document.getElementById('modifiedXmlOutputContainer');
+
+        const pdfPreviewMainContainer = document.getElementById('pdfPreviewMainContainer');
+        const originalPdfPreview = document.getElementById('originalPdfPreview');
+        const modifiedPdfPreview = document.getElementById('modifiedPdfPreview');
+
+
+        form.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            loader.style.display = 'block';
+            resultsArea.style.display = 'none';
+            messageArea.innerHTML = ''; 
+            downloadLinksContainer.style.display = 'none';
+            originalPptxLinkContainer.innerHTML = '';
+            modifiedPptxLinkContainer.innerHTML = '';
+            modifiedXmlDetailsContainer.style.display = 'none';
+            modifiedXmlOutputContainer.innerHTML = '';
+            pdfPreviewMainContainer.style.display = 'none';
+            originalPdfPreview.src = 'about:blank'; // Clear previous PDFs
+            modifiedPdfPreview.src = 'about:blank';
+
+
+            const formData = new FormData(form);
+
+            try {
+                const response = await fetch('/process_ppt', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                loader.style.display = 'none';
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    displayMessage('Processing successful!', 'success');
+                    
+                    engineUsedOutputPre.textContent = data.llm_engine_used || "N/A";
+                    jsonOutputPre.textContent = JSON.stringify(data.json_data, null, 2);
+                    xmlFilesOutputPre.textContent = data.xml_files.join('\n'); 
+                    llmResponseOutputPre.textContent = data.llm_response || "LLM interaction placeholder.";
+
+                    if (data.original_pptx_download_url) {
+                        originalPptxLinkContainer.innerHTML = `<a href="${data.original_pptx_download_url}" target="_blank">Download Original PPTX</a>`;
+                        downloadLinksContainer.style.display = 'block';
+                    }
+                    if (data.modified_pptx_download_url) {
+                        modifiedPptxLinkContainer.innerHTML = `<a href="${data.modified_pptx_download_url}" target="_blank">Download Modified PPTX</a>`;
+                        downloadLinksContainer.style.display = 'block';
+                    }
+
+                    if (data.original_pdf_url) {
+                        originalPdfPreview.src = data.original_pdf_url;
+                        pdfPreviewMainContainer.style.display = 'block';
+                    }
+                    if (data.modified_pdf_url) {
+                        modifiedPdfPreview.src = data.modified_pdf_url;
+                        pdfPreviewMainContainer.style.display = 'block';
+                    } else if (data.original_pdf_url) {
+                        // If only original PDF is available, still show the container but modified will be blank
+                         modifiedPdfPreview.src = 'about:blank'; // Ensure it's blank
+                    }
+
+
+                    if (data.modified_xml_data && Object.keys(data.modified_xml_data).length > 0) {
+                        modifiedXmlOutputContainer.innerHTML = ''; 
+                        for (const filename in data.modified_xml_data) {
+                            const fileDiv = document.createElement('div');
+                            fileDiv.className = 'mb-3';
+                            const fileTitle = document.createElement('h5');
+                            fileTitle.className = 'font-semibold text-sm text-gray-600';
+                            fileTitle.textContent = filename;
+                            const filePre = document.createElement('pre');
+                            filePre.textContent = data.modified_xml_data[filename];
+                            
+                            fileDiv.appendChild(fileTitle);
+                            fileDiv.appendChild(filePre);
+                            modifiedXmlOutputContainer.appendChild(fileDiv);
+                        }
+                        modifiedXmlDetailsContainer.style.display = 'block';
+                    }
+                    
+                    resultsArea.style.display = 'block';
+                } else {
+                    const errorData = await response.json();
+                    displayMessage(`Error: ${errorData.error || 'Failed to process the presentation.'}`, 'error');
+                    console.error("Server error:", errorData);
+                }
+            } catch (error) {
+                loader.style.display = 'none';
+                displayMessage(`Network error: ${error.message}`, 'error');
+                console.error("Network error:", error);
+            }
+        });
+
+        function displayMessage(message, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message-box ${type}`;
+            messageDiv.textContent = message;
+            messageArea.appendChild(messageDiv);
+        }
+    </script>
+</body>
+</html>
