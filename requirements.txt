@@ -1,7 +1,6 @@
 Flask>=2.0
 python-pptx>=0.6.21
 Werkzeug>=2.0
-PyYAML>=5.0  # For reading credentials.yml
 openai>=1.0   # For OpenAI API calls
 google-generativeai>=0.5 # For Gemini API calls
-# libreoffice (or soffice command) needs to be installed on the system for PDF conversion
+# libreoffice (or soffice command) needs to be installed on the system for PDF conversion, webapp will still work o/w
