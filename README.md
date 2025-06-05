@@ -34,6 +34,8 @@ PPTPilot is a web application that lets you edit PowerPoint presentations (`.ppt
     * This modified presentation is also converted to PDF.
 6.  **View & Download:** The web interface displays PDF previews of both the original and modified presentations, download links, and details of the LLM interaction.
 
+![PPTPilot Web Application Interface](images/webappsample.png)
+
 ## Setting Up PPTPilot
 
 1.  **Clone the Repository (if you have one):**
