@@ -5,7 +5,7 @@ import shutil
 from flask import Flask, request, jsonify, render_template, send_from_directory
 from werkzeug.utils import secure_filename
 import ppt_processor
-import llm_handler
+import llm_handler 
 import re 
 from pathlib import Path 
 
@@ -15,7 +15,7 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 EXTRACTED_XML_FOLDER = 'extracted_xml_original'
 MODIFIED_PPTX_FOLDER = 'modified_ppts'
-GENERATED_PDFS_FOLDER = 'generated_pdfs' # New folder for PDFs
+GENERATED_PDFS_FOLDER = 'generated_pdfs'
 
 ALLOWED_EXTENSIONS = {'pptx'}
 
@@ -47,7 +47,6 @@ def download_modified_file(filename):
 
 @app.route('/view_pdf/<pdf_filename>')
 def view_pdf(pdf_filename):
-    """Serves a PDF file for viewing in an iframe or embed tag."""
     return send_from_directory(app.config['GENERATED_PDFS_FOLDER'], pdf_filename)
 
 
@@ -58,7 +57,8 @@ def process_ppt_route():
     
     file = request.files['ppt_file']
     prompt_text = request.form.get('prompt', '')
-    llm_engine_choice = request.form.get('llm_engine', 'gemini')
+    # Get the specific model ID from the form
+    selected_model_id = request.form.get('llm_engine', 'gemini-1.5-flash-latest') # Default if not provided
 
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
@@ -78,52 +78,61 @@ def process_ppt_route():
         modified_xml_contents_for_display = {}
         original_pdf_url = None
         modified_pdf_url = None
+        image_inputs_for_llm = None # Initialize
 
         try:
-            # --- Original PPTX Processing ---
             json_data = ppt_processor.pptx_to_json(original_filepath)
             extracted_original_xml_full_paths = ppt_processor.extract_xml_from_pptx(original_filepath, original_xml_output_dir)
             
-            # Convert original PPTX to PDF
             original_pdf_path = ppt_processor.convert_pptx_to_pdf(original_filepath, app.config['GENERATED_PDFS_FOLDER'])
             if original_pdf_path:
                 original_pdf_url = f"/view_pdf/{os.path.basename(original_pdf_path)}"
 
-            # --- LLM Interaction ---
             xml_paths_for_llm_prompt = []
             for full_path in extracted_original_xml_full_paths:
                 relative_path = os.path.relpath(full_path, original_xml_output_dir)
                 xml_paths_for_llm_prompt.append(relative_path.replace(os.sep, '/')) 
 
+            # --- Placeholder for image extraction if using vision models ---
+            # if "gpt-4o" in selected_model_id or "gemini-1.5" in selected_model_id: # Basic check
+            #     # You would need a function in ppt_processor.py to extract images
+            #     # and format them correctly for the respective API.
+            #     # image_inputs_for_llm = ppt_processor.extract_images_for_llm(original_filepath, selected_model_id)
+            #     print(f"Note: Model {selected_model_id} is vision capable, but image extraction from PPTX is not yet implemented.")
+            #     pass
+
+
             llm_result = llm_handler.get_llm_response(
                 user_prompt=prompt_text,
                 ppt_json_data=json_data,
                 xml_file_paths=extracted_original_xml_full_paths, 
-                engine=llm_engine_choice
+                engine_or_model_id=selected_model_id, # Pass the specific model ID
+                image_inputs=image_inputs_for_llm # Pass None for now
             )
             llm_response_text = llm_result.get("text_response", "Error: No text response from LLM.")
-            actual_model_used = llm_result.get("model_used", llm_engine_choice)
+            actual_model_used = llm_result.get("model_used", selected_model_id)
 
-            # --- Modified PPTX Processing (if LLM suggests changes) ---
             parsed_modified_xml_map = llm_handler.parse_llm_response_for_xml_changes(llm_response_text)
             xml_updates_for_new_pptx = {}
 
             if parsed_modified_xml_map:
                 print(f"LLM suggested changes for: {list(parsed_modified_xml_map.keys())}")
                 for llm_filename, new_xml_content in parsed_modified_xml_map.items():
+                    normalized_llm_filename = llm_filename.replace("\\", "/").strip('\'"') # Normalize from LLM
                     found_path = None
-                    if llm_filename in xml_paths_for_llm_prompt:
-                        found_path = llm_filename
+                    if normalized_llm_filename in xml_paths_for_llm_prompt:
+                        found_path = normalized_llm_filename
                     else: 
                         for p in xml_paths_for_llm_prompt:
-                            if os.path.basename(p) == os.path.basename(llm_filename): 
+                            if os.path.basename(p) == os.path.basename(normalized_llm_filename): 
                                 found_path = p
                                 break
                     if found_path:
                         xml_updates_for_new_pptx[found_path] = new_xml_content
                         modified_xml_contents_for_display[found_path] = new_xml_content
                     else:
-                        print(f"Warning: Could not map LLM-specified file '{llm_filename}' to an original XML path.")
+                        print(f"Warning: Could not map LLM-specified file '{llm_filename}' (normalized: '{normalized_llm_filename}') to an original XML path.")
+
 
                 if xml_updates_for_new_pptx:
                     modified_pptx_filename_secure = f"modified_{original_filename_secure}"
@@ -136,7 +145,6 @@ def process_ppt_route():
                     )
                     if success_creating_modified:
                         modified_pptx_download_url = f"/download_modified/{modified_pptx_filename_secure}"
-                        # Convert modified PPTX to PDF
                         modified_pdf_path = ppt_processor.convert_pptx_to_pdf(modified_pptx_filepath, app.config['GENERATED_PDFS_FOLDER'])
                         if modified_pdf_path:
                             modified_pdf_url = f"/view_pdf/{os.path.basename(modified_pdf_path)}"
@@ -154,8 +162,8 @@ def process_ppt_route():
                 "original_pptx_download_url": original_pptx_download_url,
                 "modified_pptx_download_url": modified_pptx_download_url,
                 "modified_xml_data": modified_xml_contents_for_display,
-                "original_pdf_url": original_pdf_url, # New
-                "modified_pdf_url": modified_pdf_url   # New
+                "original_pdf_url": original_pdf_url, 
+                "modified_pdf_url": modified_pdf_url  
             }), 200
 
         except Exception as e:
