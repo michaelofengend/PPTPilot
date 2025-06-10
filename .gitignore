@@ -1,3 +1,8 @@
 .env
 credentials.env
 credentials.env
+benchmark_runs/
+extracted_xml_original/
+generated_images/
+modified_ppts/
+TSBench/
