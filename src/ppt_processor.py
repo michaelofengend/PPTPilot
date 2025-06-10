@@ -5,7 +5,10 @@ import zipfile
 import os
 import shutil
 from pathlib import Path
-import subprocess # For calling LibreOffice
+import subprocess
+import re
+import time
+from pdf2image import convert_from_path
 
 def extract_text_from_shape(shape):
     """Extracts text from a shape, handling different shape types."""
@@ -15,8 +18,8 @@ def extract_text_from_shape(shape):
     elif shape.has_table:
         for row in shape.table.rows:
             for cell in row.cells:
-                text += cell.text_frame.text + "\t" 
-            text += "\n" 
+                text += cell.text_frame.text + "\t"
+            text += "\n"
     return text.strip()
 
 def pptx_to_json(filepath):
@@ -65,16 +68,11 @@ def extract_xml_from_pptx(pptx_filepath, output_folder):
         with zipfile.ZipFile(pptx_filepath, 'r') as pptx_zip:
             for member_info in pptx_zip.infolist():
                 member_name = member_info.filename
-                # Ensure we are not trying to extract directory entries if any are listed
                 if not member_info.is_dir() and member_name.endswith(('.xml', '.rels')):
                     target_path = os.path.join(output_folder, member_name)
-                    # Ensure parent directory for the file exists
-                    # (ZipFile.extract() handles this, but good practice if writing manually)
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                    
-                    # Extract file by file to handle potential path issues in member_name
                     with pptx_zip.open(member_name) as source, open(target_path, "wb") as target:
-                        target.write(source.read())
+                        shutil.copyfileobj(source, target)
                     extracted_files_paths.append(target_path)
         return extracted_files_paths
     except Exception as e:
@@ -84,131 +82,154 @@ def extract_xml_from_pptx(pptx_filepath, output_folder):
 def create_modified_pptx(original_pptx_path, modified_xml_map, output_pptx_path):
     """
     Creates a new .pptx file by taking an original .pptx, and replacing
-    specified internal XML files with new content. This version reads all
-    members and writes to a new zip to avoid issues with in-place modification.
+    specified internal XML files with new content.
     """
-    temp_output_pptx_path = output_pptx_path + ".tmp" # Intermediate temporary file
-
+    temp_output_pptx_path = output_pptx_path + ".tmp"
     try:
+        # Create the directory for the output file if it doesn't exist.
+        os.makedirs(os.path.dirname(output_pptx_path), exist_ok=True)
         with zipfile.ZipFile(original_pptx_path, 'r') as zin:
             with zipfile.ZipFile(temp_output_pptx_path, 'w', zipfile.ZIP_DEFLATED) as zout:
                 for item in zin.infolist():
-                    # Normalize the item name for comparison (as keys in modified_xml_map)
                     item_name_normalized = item.filename.replace("\\", "/")
-                    
                     if item_name_normalized in modified_xml_map:
-                        # If this item is one to be modified, write the new content
                         new_content = modified_xml_map[item_name_normalized]
                         zout.writestr(item, new_content.encode('utf-8'))
-                        print(f"Successfully wrote modified '{item_name_normalized}' to temp zip.")
                     else:
-                        # Otherwise, copy the item from the original zip
                         buffer = zin.read(item.filename)
                         zout.writestr(item, buffer)
-        
-        # Replace the target output file with the temporary one
         os.replace(temp_output_pptx_path, output_pptx_path)
         print(f"Modified PPTX successfully created at: {output_pptx_path}")
         return True
-
     except Exception as e:
         print(f"Error creating modified PPTX at {output_pptx_path}: {e}")
         if os.path.exists(temp_output_pptx_path):
-            os.remove(temp_output_pptx_path) # Clean up temp file on error
+            os.remove(temp_output_pptx_path)
         return False
-    finally:
-        # Ensure temp file is removed if it still exists for some reason (e.g. os.replace failed)
-        if os.path.exists(temp_output_pptx_path) and not os.path.exists(output_pptx_path) : # only remove if os.replace failed
-             if os.path.exists(temp_output_pptx_path): # Re-check existence before removing
-                try:
-                    os.remove(temp_output_pptx_path)
-                except OSError as e_remove:
-                    print(f"Warning: Could not remove temporary file {temp_output_pptx_path}: {e_remove}")
+
+def _find_soffice_command():
+    """Finds a working LibreOffice/OpenOffice command."""
+    soffice_commands = ['libreoffice', 'soffice']
+    for cmd in soffice_commands:
+        if shutil.which(cmd):
+            try:
+                subprocess.run([cmd, '--version'], capture_output=True, check=True, timeout=10)
+                print(f"Found working soffice command: {cmd}")
+                return cmd
+            except Exception as e:
+                print(f"Soffice command '{cmd}' not working or timed out: {e}")
+    return None
+
+def _convert_pptx_to_pdf(pptx_filepath, output_folder, soffice_cmd):
+    """Converts a PPTX to a single PDF file using an isolated user profile for stability."""
+    # Create a unique, temporary profile directory for this specific conversion process
+    temp_profile_dir = Path(output_folder) / f"lo_profile_{os.getpid()}_{time.time_ns()}"
+    temp_profile_dir.mkdir(parents=True, exist_ok=True)
+    
+    pdf_path = Path(output_folder) / (Path(pptx_filepath).stem + ".pdf")
+    
+    for attempt in range(2): # Retry mechanism
+        try:
+            command_args = [
+                soffice_cmd,
+                # ** FIX: Isolate LibreOffice instance to prevent parallel conflicts **
+                f"-env:UserInstallation=file://{os.path.abspath(temp_profile_dir)}",
+                '--headless',
+                '--convert-to', 'pdf',
+                '--outdir', output_folder,
+                pptx_filepath
+            ]
+            subprocess.run(command_args, capture_output=True, text=True, timeout=120, check=True)
+            
+            if pdf_path.exists():
+                shutil.rmtree(temp_profile_dir, ignore_errors=True)
+                return str(pdf_path)
+            
+            print(f"Attempt {attempt + 1}: PDF not found for {Path(pptx_filepath).name}. Retrying...")
+            time.sleep(1)
+
+        except subprocess.CalledProcessError as e:
+            print(f"Attempt {attempt + 1}: Soffice error for {Path(pptx_filepath).name}. STDERR: {e.stderr.strip()}")
+            time.sleep(1)
+        except Exception as e:
+            print(f"Attempt {attempt + 1}: Unexpected error during PDF conversion: {e}")
+            break
+    
+    shutil.rmtree(temp_profile_dir, ignore_errors=True)
+    print(f"Failed to convert {Path(pptx_filepath).name} to PDF after all attempts.")
+    return None
 
 
-def convert_pptx_to_pdf(pptx_filepath, output_folder):
+def _convert_pdf_to_images(pdf_filepath, output_folder):
+    """Converts a PDF file's pages to PNG images."""
+    print(f"Converting PDF {pdf_filepath} to images...")
+    try:
+        images = convert_from_path(
+            pdf_filepath,
+            output_folder=output_folder,
+            fmt='png',
+            output_file='slide-',
+            paths_only=True
+        )
+        print(f"Successfully converted PDF to {len(images)} images.")
+        return sorted(images)
+    except Exception as e:
+        print(f"An error occurred converting PDF to images: {e}")
+        print("Please ensure 'poppler' is installed on your system.")
+        print("On macOS: 'brew install poppler'")
+        print("On Debian/Ubuntu: 'sudo apt-get install poppler-utils'")
+        return []
+
+
+
+def export_slides_to_images(pptx_filepath, output_folder):
     """
-    Converts a .pptx file to .pdf using LibreOffice/OpenOffice.
-    Args:
-        pptx_filepath (str): Path to the input .pptx file.
-        output_folder (str): Folder where the PDF will be saved.
-    Returns:
-        str: Path to the generated PDF file, or None if conversion failed.
+    Robustly converts each slide of a .pptx file to a .png image by first
+    converting to PDF, then splitting the PDF into images.
     """
-    # Ensure paths are absolute for LibreOffice
     abs_pptx_filepath = os.path.abspath(pptx_filepath)
     abs_output_folder = os.path.abspath(output_folder)
-
-    if not os.path.exists(abs_pptx_filepath):
-        print(f"Error: PPTX file not found at {abs_pptx_filepath}")
-        return None
-
     Path(abs_output_folder).mkdir(parents=True, exist_ok=True)
+
+    soffice_cmd = _find_soffice_command()
+    if not soffice_cmd:
+        print("Error: LibreOffice command not found. Cannot proceed with image conversion.")
+        return []
+
+    pdf_path = _convert_pptx_to_pdf(abs_pptx_filepath, abs_output_folder, soffice_cmd)
     
-    soffice_commands = ['libreoffice', 'soffice']
-    soffice_cmd_to_use = None
-    
-    for cmd_test in soffice_commands:
-        try:
-            # Check if the command exists and is executable
-            # Using shell=True for Windows compatibility if soffice is in PATH but not directly executable
-            # For macOS/Linux, direct execution is usually fine.
-            # A more robust check involves shutil.which(cmd_test)
-            if shutil.which(cmd_test): # Check if command is in PATH and executable
-                subprocess.run([cmd_test, '--version'], capture_output=True, check=True, timeout=10)
-                soffice_cmd_to_use = cmd_test
-                print(f"Found working soffice command: {soffice_cmd_to_use}")
-                break 
-        except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-            print(f"Soffice command '{cmd_test}' not working or timed out: {e}")
-            continue
-            
-    if not soffice_cmd_to_use:
-        print("Error: LibreOffice/OpenOffice command ('libreoffice' or 'soffice') not found or not working.")
-        print("Please install LibreOffice and ensure it's in your system PATH to enable PDF conversion.")
-        return None
+    if not pdf_path:
+        return []
+
+    image_paths = _convert_pdf_to_images(pdf_path, abs_output_folder)
 
     try:
-        print(f"Attempting to convert {abs_pptx_filepath} to PDF using {soffice_cmd_to_use} into {abs_output_folder}...")
-        # Using a list of arguments is generally safer than a single string with shell=True
-        command_args = [
-            soffice_cmd_to_use,
-            '--headless',
-            '--convert-to', 'pdf',
-            '--outdir', abs_output_folder,
-            abs_pptx_filepath
-        ]
-        
-        process = subprocess.run(
-            command_args,
-            capture_output=True,
-            text=True, # Decodes stdout/stderr as text
-            timeout=120  # Increased timeout for potentially large files
-        )
-        
-        # LibreOffice usually names the output file the same as input but with .pdf extension
-        pdf_filename = Path(abs_pptx_filepath).stem + ".pdf"
-        generated_pdf_path = os.path.join(abs_output_folder, pdf_filename)
+        os.remove(pdf_path)
+        print(f"Cleaned up intermediate PDF: {pdf_path}")
+    except OSError as e:
+        print(f"Warning: Could not remove intermediate PDF {pdf_path}: {e}")
 
-        if process.returncode == 0 and os.path.exists(generated_pdf_path):
-            print(f"Successfully converted to PDF: {generated_pdf_path}")
-            return generated_pdf_path
-        else:
-            print(f"Error during PDF conversion for {abs_pptx_filepath}.")
-            print(f"Return code: {process.returncode}")
-            print(f"SOFFICE STDOUT: {process.stdout.strip() if process.stdout else 'N/A'}")
-            print(f"SOFFICE STDERR: {process.stderr.strip() if process.stderr else 'N/A'}")
-            if not os.path.exists(generated_pdf_path):
-                print(f"Output PDF file not found at expected location: {generated_pdf_path}")
+    return image_paths
+
+def extract_specific_xml_from_pptx(pptx_filepath, xml_filename):
+    """
+    Extracts the content of a single specified XML file from a .pptx file.
+    
+    Args:
+        pptx_filepath (str): Path to the .pptx file.
+        xml_filename (str): The internal path to the XML file (e.g., 'ppt/slides/slide1.xml').
+        
+    Returns:
+        str: The content of the XML file as a string, or None if not found.
+    """
+    try:
+        with zipfile.ZipFile(pptx_filepath, 'r') as pptx_zip:
+            # Normalize filename for matching
+            xml_filename_normalized = xml_filename.replace("\\", "/")
+            if xml_filename_normalized in pptx_zip.namelist():
+                with pptx_zip.open(xml_filename_normalized) as xml_file:
+                    return xml_file.read().decode('utf-8')
             return None
-            
-    except FileNotFoundError: # Should be caught by shutil.which check now
-        print(f"Error: '{soffice_cmd_to_use}' command not found. Is LibreOffice/OpenOffice installed and in PATH?")
-        return None
-    except subprocess.TimeoutExpired:
-        print(f"Error: PDF conversion timed out for {abs_pptx_filepath}.")
-        return None
     except Exception as e:
-        print(f"An unexpected error occurred during PDF conversion: {e}")
+        print(f"Error extracting specific XML '{xml_filename}' from {pptx_filepath}: {e}")
         return None
-

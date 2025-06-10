@@ -15,7 +15,7 @@
         button[type="submit"]:hover { background-color: #4338ca; }
         .results-container { margin-top: 2rem; padding: 1.5rem; background-color: #eef2ff; border: 1px solid #c7d2fe; border-radius: 0.375rem; }
         .results-container h3 { color: #3730a3; margin-bottom: 1rem; }
-        pre { background-color: #f9fafb; padding: 1rem; border-radius: 0.25rem; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; color: #1f2937; max-height: 300px; }
+        pre { background-color: #f9fafb; padding: 1rem; border-radius: 0.25rem; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; color: #1f2937; font-size: 0.875rem; }
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .message-box { padding: 1rem; margin-bottom: 1rem; border-radius: 0.375rem; font-size: 0.9rem; }
@@ -25,13 +25,12 @@
         summary { padding: 0.75rem 1rem; font-weight: 500; color: #374151; cursor: pointer; outline: none; border-radius: 0.375rem 0.375rem 0 0; }
         summary:hover { background-color: #f9fafb; }
         details[open] summary { border-bottom: 1px solid #e5e7eb; }
-        .details-content { padding: 1rem; border-top: 1px solid #e5e7eb; }
         .download-links a { display: inline-block; margin-right: 1rem; margin-bottom: 0.5rem; padding: 0.5rem 1rem; background-color: #3b82f6; color: white; border-radius: 0.25rem; text-decoration: none; font-size: 0.9rem; }
         .download-links a:hover { background-color: #2563eb; }
-        .pdf-preview-container { display: flex; justify-content: space-between; margin-top: 1.5rem; margin-bottom: 1.5rem; gap: 1rem; }
-        .pdf-preview-box { flex: 1; border: 1px solid #d1d5db; border-radius: 0.375rem; background-color: #fff; padding: 0.5rem; }
-        .pdf-preview-box h4 { text-align: center; margin-bottom: 0.5rem; font-weight: 500; color: #4b5563; }
-        .pdf-preview-box iframe, .pdf-preview-box embed { width: 100%; height: 600px; border: none; }
+        .slide-comparison-container { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+        .slide-box { border: 1px solid #d1d5db; border-radius: 0.375rem; background-color: #fff; padding: 1rem; }
+        .slide-box h4 { text-align: center; margin-bottom: 1rem; font-weight: 600; color: #4b5563; }
+        .slide-box img { width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 0.25rem; }
     </style>
 </head>
 <body>
@@ -53,21 +52,19 @@
                 <label for="llm_engine">Choose LLM Engine:</label>
                 <select id="llm_engine" name="llm_engine">
                     <optgroup label="Google Gemini">
-                        <option value="gemini-2.0-flash" selected>Gemini 2.0 Flash (Fast, Cost-Effective)</option>
-                        <option value="gemini-2.0-flash-preview-image-generation">Gemini 2.0 flash image-generation</option>
-                        <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash 5/20/2025 (Latest, Fast)</option>
-                        <option value="gemini-2.5-pro-preview-05-06">Gemini 2.5 Pro 5/06/2025 (Advanced, Multimodal)</option>
-                        <!-- Add other Gemini models as they become available/relevant -->
+                        <option value="gemini-2.5-flash-preview-05-20">Gemini 2.5 Flash Preview</option>
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                        <option value="gemini-2.0-flash-preview-image-generation">Gemini 2.0 Flash Image Generation</option>
+                        <option value="gemini-2.5-pro-preview-05-06">Gemini 2.5 Pro Preview</option>
                     </optgroup>
                     <optgroup label="OpenAI GPT">
-                        <option value="gpt-4o">GPT-4o</option>
-                        <option value="gpt-4o-mini">GPT-4o Mini (Compact, Fast)</option>
-                        <option value="gpt-4.1-2025-04-14">GPT-4.1 </option>
-                        <option value="gpt-4.5-preview-2025-02-27">GPT-4.5 Preview (Latest, Fast)</option>
+                        <option value="gpt-4o">GPT-4o (Latest, Multimodal)</option>
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                         <option value="gpt-4.1-2025-04-14">GPT-4.1 </option>
+                        <option value="gpt-4.5-preview-2025-02-27">GPT-4.5 Preview</option>
                         <option value="o3-2025-04-16"> GPT-o3 04/16</option>
-
-
-                        <!-- Add other OpenAI models as they become available/relevant -->
                     </optgroup>
                 </select>
             </div>
@@ -79,18 +76,9 @@
         <div id="resultsArea" class="results-container" style="display:none;">
             <h3 class="text-xl font-semibold">Processing Results:</h3>
 
-            <div id="pdfPreviewMainContainer" style="display:none;">
-                <h4 class="text-xl font-semibold mt-6 mb-2 text-center text-gray-700">Before & After PDF Preview</h4>
-                <div class="pdf-preview-container">
-                    <div class="pdf-preview-box">
-                        <h4>Original Presentation</h4>
-                        <iframe id="originalPdfPreview" src="" type="application/pdf"></iframe>
-                    </div>
-                    <div class="pdf-preview-box">
-                        <h4>Modified Presentation</h4>
-                        <iframe id="modifiedPdfPreview" src="" type="application/pdf"></iframe>
-                    </div>
-                </div>
+            <div id="slideComparisonMainContainer" style="display:none;">
+                <h4 class="text-xl font-semibold mt-6 mb-2 text-center text-gray-700">Side-by-Side Comparison of Edited Slides</h4>
+                <!-- This container will be populated by JavaScript -->
             </div>
             
             <div id="downloadLinksContainer" class="download-links my-4" style="display:none;">
@@ -98,6 +86,13 @@
                 <span id="originalPptxLinkContainer"></span>
                 <span id="modifiedPptxLinkContainer"></span>
             </div>
+
+            <details class="mt-2">
+                <summary class="font-semibold">Processing & Timing Statistics</summary>
+                <div class="details-content">
+                    <pre id="timingStatsOutputPre"></pre>
+                </div>
+            </details>
 
             <details class="mt-2">
                 <summary>LLM Engine Used</summary>
@@ -113,37 +108,20 @@
                 </div>
             </details>
 
-            <details class="mt-2">
-                <summary>Extracted Original XML Files (Filenames)</summary>
-                <div class="details-content">
-                    <pre id="xmlFilesOutputPre"></pre>
-                </div>
-            </details>
-
-            <div id="modifiedXmlDetailsContainer" style="display:none;">
-                 <details class="mt-2">
-                    <summary>Modified XML Content (by LLM)</summary>
-                    <div class="details-content" id="modifiedXmlOutputContainer">
-                    </div>
-                </details>
-            </div>
-            
             <div id="llmResponseOutput" class="mt-4 p-4 bg-white rounded-md shadow">
-                <h4 class="text-lg font-medium mb-1 text-gray-700">LLM Response (Full):</h4>
+                <h4 class="text-lg font-medium mb-1 text-gray-700">LLM Response & Generated Code:</h4>
                 <pre id="llmResponseOutputPre" class="max-h-full"></pre>
             </div>
         </div>
     </div>
 
     <script>
-        // JavaScript remains the same as ppt_llm_frontend_v3
         const form = document.getElementById('pptForm');
         const loader = document.getElementById('loader');
         const resultsArea = document.getElementById('resultsArea');
         
         const engineUsedOutputPre = document.getElementById('engineUsedOutputPre');
         const jsonOutputPre = document.getElementById('jsonOutputPre');
-        const xmlFilesOutputPre = document.getElementById('xmlFilesOutputPre');
         const llmResponseOutputPre = document.getElementById('llmResponseOutputPre');
         const messageArea = document.getElementById('messageArea');
 
@@ -151,13 +129,8 @@
         const originalPptxLinkContainer = document.getElementById('originalPptxLinkContainer');
         const modifiedPptxLinkContainer = document.getElementById('modifiedPptxLinkContainer');
         
-        const modifiedXmlDetailsContainer = document.getElementById('modifiedXmlDetailsContainer');
-        const modifiedXmlOutputContainer = document.getElementById('modifiedXmlOutputContainer');
-
-        const pdfPreviewMainContainer = document.getElementById('pdfPreviewMainContainer');
-        const originalPdfPreview = document.getElementById('originalPdfPreview');
-        const modifiedPdfPreview = document.getElementById('modifiedPdfPreview');
-
+        const slideComparisonMainContainer = document.getElementById('slideComparisonMainContainer');
+        const timingStatsOutputPre = document.getElementById('timingStatsOutputPre');
 
         form.addEventListener('submit', async function(event) {
             event.preventDefault();
@@ -168,12 +141,10 @@
             downloadLinksContainer.style.display = 'none';
             originalPptxLinkContainer.innerHTML = '';
             modifiedPptxLinkContainer.innerHTML = '';
-            modifiedXmlDetailsContainer.style.display = 'none';
-            modifiedXmlOutputContainer.innerHTML = '';
-            pdfPreviewMainContainer.style.display = 'none';
-            originalPdfPreview.src = 'about:blank'; 
-            modifiedPdfPreview.src = 'about:blank';
+            slideComparisonMainContainer.style.display = 'none';
+            slideComparisonMainContainer.innerHTML = '<h4 class="text-xl font-semibold mt-6 mb-2 text-center text-gray-700">Side-by-Side Comparison of Edited Slides</h4>'; // Reset header
 
+            timingStatsOutputPre.textContent = ''; 
 
             const formData = new FormData(form);
 
@@ -188,12 +159,11 @@
                 if (response.ok) {
                     const data = await response.json();
                     
-                    displayMessage('Processing successful!', 'success');
+                    displayMessage(data.message || 'Processing successful!', 'success');
                     
                     engineUsedOutputPre.textContent = data.llm_engine_used || "N/A";
-                    jsonOutputPre.textContent = JSON.stringify(data.json_data, null, 2);
-                    xmlFilesOutputPre.textContent = data.xml_files.join('\n'); 
-                    llmResponseOutputPre.textContent = data.llm_response || "LLM interaction placeholder.";
+                    jsonOutputPre.textContent = JSON.stringify(data.ppt_summary_json, null, 2);
+                    llmResponseOutputPre.textContent = data.llm_response || "No response from LLM.";
 
                     if (data.original_pptx_download_url) {
                         originalPptxLinkContainer.innerHTML = `<a href="${data.original_pptx_download_url}" target="_blank">Download Original PPTX</a>`;
@@ -204,46 +174,43 @@
                         downloadLinksContainer.style.display = 'block';
                     }
 
-                    if (data.original_pdf_url) {
-                        originalPdfPreview.src = data.original_pdf_url;
-                        pdfPreviewMainContainer.style.display = 'block';
-                    }
-                    if (data.modified_pdf_url) {
-                        modifiedPdfPreview.src = data.modified_pdf_url;
-                        pdfPreviewMainContainer.style.display = 'block';
-                    } else if (data.original_pdf_url) {
-                         modifiedPdfPreview.src = 'about:blank'; 
-                    }
-
-
-                    if (data.modified_xml_data && Object.keys(data.modified_xml_data).length > 0) {
-                        modifiedXmlOutputContainer.innerHTML = ''; 
-                        for (const filename in data.modified_xml_data) {
-                            const fileDiv = document.createElement('div');
-                            fileDiv.className = 'mb-3';
-                            const fileTitle = document.createElement('h5');
-                            fileTitle.className = 'font-semibold text-sm text-gray-600';
-                            fileTitle.textContent = filename;
-                            const filePre = document.createElement('pre');
-                            filePre.textContent = data.modified_xml_data[filename];
-                            
-                            fileDiv.appendChild(fileTitle);
-                            fileDiv.appendChild(filePre);
-                            modifiedXmlOutputContainer.appendChild(fileDiv);
-                        }
-                        modifiedXmlDetailsContainer.style.display = 'block';
+                    if (data.edited_slides_comparison_data && data.edited_slides_comparison_data.length > 0) {
+                        slideComparisonMainContainer.innerHTML = '<h4 class="text-xl font-semibold mt-6 mb-2 text-center text-gray-700">Side-by-Side Comparison of Edited Slides</h4>'; // Reset header
+                        data.edited_slides_comparison_data.forEach(slide => {
+                            const comparisonDiv = document.createElement('div');
+                            comparisonDiv.className = 'slide-comparison-container mb-6';
+                            comparisonDiv.innerHTML = `
+                                <div class="slide-box">
+                                    <h4>Original - Slide ${slide.slide_number}</h4>
+                                    <img src="${slide.original_image_url}" alt="Original Slide ${slide.slide_number}">
+                                </div>
+                                <div class="slide-box">
+                                    <h4>Modified - Slide ${slide.slide_number}</h4>
+                                    <img src="${slide.modified_image_url}" alt="Modified Slide ${slide.slide_number}">
+                                </div>
+                            `;
+                            slideComparisonMainContainer.appendChild(comparisonDiv);
+                        });
+                        slideComparisonMainContainer.style.display = 'block';
                     }
                     
+                    if (data.timing_stats) {
+                        const stats = data.timing_stats;
+                        let statsText = `TIMING BREAKDOWN (seconds):\n`;
+                        statsText += `  Total Request Time: ${formatTime(stats.total_processing_time_s)}\n`;
+                        statsText += `  LLM Inference:        ${formatTime(stats.llm_inference_time_s)}\n`;
+                        statsText += `  Image Conversion:     ${formatTime(stats.image_conversion_time_s)}\n`;
+                        timingStatsOutputPre.textContent = statsText;
+                    }
+
                     resultsArea.style.display = 'block';
                 } else {
                     const errorData = await response.json();
                     displayMessage(`Error: ${errorData.error || 'Failed to process the presentation.'}`, 'error');
-                    console.error("Server error:", errorData);
                 }
             } catch (error) {
                 loader.style.display = 'none';
                 displayMessage(`Network error: ${error.message}`, 'error');
-                console.error("Network error:", error);
             }
         });
 
@@ -251,7 +218,12 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message-box ${type}`;
             messageDiv.textContent = message;
+            messageArea.innerHTML = '';
             messageArea.appendChild(messageDiv);
+        }
+
+        function formatTime(timeInSeconds) {
+            return (timeInSeconds !== null && timeInSeconds !== undefined && timeInSeconds !== "N/A") ? `${parseFloat(timeInSeconds).toFixed(3)}s` : "N/A";
         }
     </script>
 </body>
